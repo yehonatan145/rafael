@@ -10,38 +10,45 @@ import model
 import tensorflow as tf
 import numpy as np
 import random
-from tensorflow.examples.tutorials.mnist import input_data
 
 log_dir = 'log/'
+num_time_samples = 30
+num_sample_features = 6
+num_labels = 25
 batch_size = 100
-image_size = 784
 learning_rate = 0.1
 load = 1
 max_steps = 100000
 
 
 def placeholder_inputs():
-    images = tf.placeholder(tf.float32, shape=(batch_size, 784))
-    labels = tf.placeholder(tf.int32, shape=(batch_size, 10))
+    images = tf.placeholder(tf.float32, shape=(batch_size, num_time_samples, num_sample_features))
+    labels = tf.placeholder(tf.int32, shape=(batch_size, 1))
     return images, labels
 
 
-def fill_feed_dict(images_placeholder, labels_placeholder, dataset):
-    batch_xs, batch_ys = dataset.next_batch(batch_size)
-    return {images_placeholder: batch_xs, labels_placeholder: batch_ys}
+def next_batch(missiles, labels):
+    indexes = range(len(labels))
+    random.shuffle(indexes)
+    return missiles[indexes[0:batch_size]], labels[indexes[0:batch_size]]
 
 
-def do_eval(ses, eval_func, images, labels, data):
+def fill_feed_dict(missiles_ph, labels_ph, missiles_routes, labels):
+    batch_xs, batch_ys = next_batch(missiles_routes, labels)
+    return {missiles_ph: batch_xs, labels_ph: batch_ys}
+
+
+# classification eval
+def do_eval(ses, eval_func, missiles_ph, labels_ph, missiles_routes, labels):
     correct_count = 0  # Counts the number of correct predictions.
     steps_per_epoch = 10
     num_examples = batch_size * steps_per_epoch
     for step in range(steps_per_epoch):
-        fd = fill_feed_dict(images, labels, data)
-        # print("eval: ", eval_func)
+        fd = fill_feed_dict(missiles_ph, labels_ph, missiles_routes, labels)
         correct = ses.run(eval_func, feed_dict=fd)
         correct_count += correct
         # print("should be top: ", songs_batch_size * ticks_batch * 128, "actually: ", cur_true)
-    precision = (1000 - float(10000 - correct_count) / 2) / num_examples
+    precision = (num_examples - float(num_examples * num_labels - correct_count) / 2) / num_examples
     print('Num examples: ', num_examples, '  Num correct: ', correct_count, '  Precision: ', precision)
 
 
@@ -49,8 +56,8 @@ def run_training():
     """Train MNIST for a number of steps."""
     # Get the sets of images and labels for training, validation, and
     # test on MNIST.
-    train_data = input_data.read_data_sets("/tmp/tensorflow/mnist/input_data", one_hot=True).train
-    test_data = input_data.read_data_sets("/tmp/tensorflow/mnist/input_data", one_hot=True).validation
+    train_data = []  # input_data.read_data_sets("/tmp/tensorflow/mnist/input_data", one_hot=True).train
+    test_data = []  # input_data.read_data_sets("/tmp/tensorflow/mnist/input_data", one_hot=True).validation
     # validation_data = np.load('dev.npy')
 
     # Tell TensorFlow that the model will be built into the default Graph.
@@ -84,9 +91,7 @@ def run_training():
             sess.run(init)
         # Instantiate a SummaryWriter to output summaries and the Graph.
         summary_writer = tf.summary.FileWriter(log_dir, sess.graph)
-
         # And then after everything is built:
-
         # Run the Op to initialize the variables.
         print("run session")
 
@@ -116,7 +121,6 @@ def run_training():
                 # summary_str = sess.run(summary, feed_dict=fill_feed_dict())
                 # summary_writer.add_summary(summary_str, step)
                 # summary_writer.flush()
-
                 # Save a checkpoint and evaluate the model periodically.
             if (step + 1) % 500 == 0 or (step + 1) == max_steps:
                 checkpoint_file = os.path.join(log_dir, 'model.ckpt')
