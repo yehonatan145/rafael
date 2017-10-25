@@ -1,0 +1,76 @@
+import tensorflow as tf
+import math
+import numpy as np
+import collections
+
+# learning_rate = 0.1
+batch_size = 100
+num_features = 10
+image_size = 784
+first_hid = 100
+num_labels = 10
+num_class_feature = 20
+
+
+def inference(images, labels):
+    features_series = []
+    logits_series = []
+    class_loss = 0.0
+    decode_loss = 0.0
+    for i in range(batch_size):
+        if i > 0:
+            tf.get_variable_scope().reuse_variables()
+        with tf.name_scope('hidden1'):
+            W = tf.Variable(np.random.rand(image_size, first_hid), dtype=tf.float32)
+            b = tf.Variable(np.zeros((1, first_hid)), dtype=tf.float32)
+            x = tf.nn.relu(tf.matmul(tf.reshape(images[i], (1, 784)), W) + b)
+        with tf.name_scope('hidden2'):
+            W = tf.Variable(np.random.rand(first_hid, num_features), dtype=tf.float32)
+            b = tf.Variable(np.zeros((1, num_features)), dtype=tf.float32)
+            feat = tf.matmul(x, W) + b
+        features_series.append(feat)
+        with tf.name_scope('classification'):
+            x = feat[0:5]
+            W = tf.Variable(np.random.rand(num_features, num_labels), dtype=tf.float32)
+            b = tf.Variable(np.zeros((1, num_labels)), dtype=tf.float32)
+            logits = tf.matmul(x, W) + b
+            loss = tf.losses.softmax_cross_entropy(tf.reshape(labels[i], (1, 10)), tf.reshape(logits, (1, 10)))
+            class_loss += loss
+        logits_series.append(logits)
+        with tf.name_scope('decoder_hid'):
+            W = tf.Variable(np.random.rand(num_features, first_hid), dtype=tf.float32)
+            b = tf.Variable(np.zeros((1, first_hid)), dtype=tf.float32)
+            x = tf.nn.relu(tf.matmul(feat, W) + b)
+        with tf.name_scope('decoder_final'):
+            W = tf.Variable(np.random.rand(first_hid, image_size), dtype=tf.float32)
+            b = tf.Variable(np.zeros((1, image_size)), dtype=tf.float32)
+            decoded_image = tf.nn.relu(tf.matmul(x, W) + b)
+        with tf.name_scope('decoder_loss'):
+            loss = tf.losses.mean_squared_error(tf.reshape(images[i], (1, 784)), tf.reshape(decoded_image, (1, 784)))
+            decode_loss += loss
+    return tf.stack(features_series), tf.stack(logits_series), class_loss / batch_size / 10, decode_loss / batch_size
+
+
+def training(loss, learning_rate):
+    # Add a scalar summary for the snapshot loss.
+    tf.summary.scalar('loss', loss)
+    # Create the gradient descent optimizer with the given learning rate.
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+    # Create a variable to track the global step.
+    global_step = tf.Variable(0, name='global_step', trainable=False)
+    # Use the optimizer to apply the gradients that minimize the loss
+    # (and also increment the global step counter) as a single training step.
+    train_op = optimizer.minimize(loss, global_step=global_step)
+    return train_op
+
+
+def evaluation(logits, labels):
+    # For a classifier model, we can use the in_top_k Op.
+    # It returns a bool tensor with shape [batch_size] that is true for
+    # the examples where the label is in the top k (here k=1)
+    # of all logits for that example.
+    # correct =  tf.gather(labels, tf.nn.top_k(logits, 1))
+    guessed_digits = tf.cast(tf.round(tf.nn.softmax(logits)), tf.int32)
+    # print("check shapes: \n", guessed_digits)
+    # print(labels)
+    return tf.reduce_sum(tf.cast(tf.equal(guessed_digits, tf.reshape(labels, (100, 1, 10))), tf.int32))
