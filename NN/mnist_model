@@ -3,16 +3,24 @@ import math
 import numpy as np
 import collections
 
-# learning_rate = 0.1
+log_dir = 'log/'
+num_time_samples = 30
+num_sample_features = 6
+num_labels = 25
 batch_size = 100
-num_features = 10
-image_size = 784
-first_hid = 100
-num_labels = 10
-num_class_feature = 20
+learning_rate = 0.1
+load = 1
+max_steps = 100000
+
+conv1_num_filters = 6
+conv2_num_filters = 3
+conv2_one_layer_length = 78
+first_hid = 30
+num_encode_features = 10
+num_class_feature = 7
 
 
-def inference(images, labels):
+def inference(routes, labels):
     features_series = []
     logits_series = []
     class_loss = 0.0
@@ -20,34 +28,53 @@ def inference(images, labels):
     for i in range(batch_size):
         if i > 0:
             tf.get_variable_scope().reuse_variables()
+        with tf.name_scope('conv1'):
+            kernel = tf.Variable(np.random.rand(3, 6, 6))
+            conv = tf.nn.conv2d(routes[i], kernel, 1, padding='VALID')
+            # biases = tf.Variable('biases', [64], tf.constant_initializer(0.0))
+            # pre_activation = tf.nn.bias_add(conv, biases)
+            conv1 = tf.nn.relu(conv)
+
+        norm1 = tf.nn.lrn(conv1, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75)
+        with tf.name_scope('conv2'):
+            kernel = tf.Variable(np.random.rand(3, 6, 3))
+            conv = tf.nn.conv2d(norm1, kernel, 1, padding='VALID')
+            # biases = tf.Variable('biases', [64], tf.constant_initializer(0.1))
+            # pre_activation = tf.nn.bias_add(conv, biases)
+            conv2 = tf.nn.relu(conv)
+            tf.reshape((1, conv2_one_layer_length))
+
+        norm2 = tf.nn.lrn(conv2, 4, bias=1.0, alpha=0.001 / 9.0, beta=0.75)
+
         with tf.name_scope('hidden1'):
-            W = tf.Variable(np.random.rand(image_size, first_hid), dtype=tf.float32)
+            W = tf.Variable(np.random.rand(conv2_one_layer_length, first_hid), dtype=tf.float32)
             b = tf.Variable(np.zeros((1, first_hid)), dtype=tf.float32)
-            x = tf.nn.relu(tf.matmul(tf.reshape(images[i], (1, 784)), W) + b)
+            x = tf.nn.relu(tf.matmul(tf.reshape(norm2, (1, conv2_one_layer_length)), W) + b)
         with tf.name_scope('hidden2'):
-            W = tf.Variable(np.random.rand(first_hid, num_features), dtype=tf.float32)
-            b = tf.Variable(np.zeros((1, num_features)), dtype=tf.float32)
+            W = tf.Variable(np.random.rand(first_hid, num_encode_features), dtype=tf.float32)
+            b = tf.Variable(np.zeros((1, num_encode_features)), dtype=tf.float32)
             feat = tf.matmul(x, W) + b
-        features_series.append(feat)
+            features_series.append(feat)
         with tf.name_scope('classification'):
             x = feat[0:5]
-            W = tf.Variable(np.random.rand(num_features, num_labels), dtype=tf.float32)
+            W = tf.Variable(np.random.rand(num_class_feature, num_labels), dtype=tf.float32)
             b = tf.Variable(np.zeros((1, num_labels)), dtype=tf.float32)
             logits = tf.matmul(x, W) + b
             loss = tf.losses.softmax_cross_entropy(tf.reshape(labels[i], (1, 10)), tf.reshape(logits, (1, 10)))
             class_loss += loss
-        logits_series.append(logits)
+            logits_series.append(logits)
         with tf.name_scope('decoder_hid'):
-            W = tf.Variable(np.random.rand(num_features, first_hid), dtype=tf.float32)
+            W = tf.Variable(np.random.rand(num_encode_features, first_hid), dtype=tf.float32)
             b = tf.Variable(np.zeros((1, first_hid)), dtype=tf.float32)
             x = tf.nn.relu(tf.matmul(feat, W) + b)
         with tf.name_scope('decoder_final'):
-            W = tf.Variable(np.random.rand(first_hid, image_size), dtype=tf.float32)
-            b = tf.Variable(np.zeros((1, image_size)), dtype=tf.float32)
+            W = tf.Variable(np.random.rand(first_hid, conv2_one_layer_length), dtype=tf.float32)
+            b = tf.Variable(np.zeros((1, conv2_one_layer_length)), dtype=tf.float32)
             decoded_image = tf.nn.relu(tf.matmul(x, W) + b)
         with tf.name_scope('decoder_loss'):
-            loss = tf.losses.mean_squared_error(tf.reshape(images[i], (1, 784)), tf.reshape(decoded_image, (1, 784)))
-            decode_loss += loss
+            pass
+            # loss = tf.losses.mean_squared_error(tf.reshape(images[i], (1, 784)), tf.reshape(decoded_image, (1, 784)))
+            # decode_loss += loss
     return tf.stack(features_series), tf.stack(logits_series), class_loss / batch_size / 10, decode_loss / batch_size
 
 
@@ -70,7 +97,7 @@ def evaluation(logits, labels):
     # the examples where the label is in the top k (here k=1)
     # of all logits for that example.
     # correct =  tf.gather(labels, tf.nn.top_k(logits, 1))
-    guessed_digits = tf.cast(tf.round(tf.nn.softmax(logits)), tf.int32)
+    guessed_labels = tf.cast(tf.round(tf.nn.softmax(logits)), tf.int32)
     # print("check shapes: \n", guessed_digits)
     # print(labels)
-    return tf.reduce_sum(tf.cast(tf.equal(guessed_digits, tf.reshape(labels, (100, 1, 10))), tf.int32))
+    return tf.reduce_sum(tf.cast(tf.equal(guessed_labels, tf.reshape(labels, (batch_size, 1, num_labels))), tf.int32))
