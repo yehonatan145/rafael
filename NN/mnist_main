@@ -1,0 +1,135 @@
+"""Trains and Evaluates the MNIST network using a feed dictionary."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+# pylint: disable=missing-docstring
+import os
+import time
+import model
+import tensorflow as tf
+import numpy as np
+import random
+from tensorflow.examples.tutorials.mnist import input_data
+
+log_dir = 'log/'
+batch_size = 100
+image_size = 784
+learning_rate = 0.1
+load = 1
+max_steps = 100000
+
+
+def placeholder_inputs():
+    images = tf.placeholder(tf.float32, shape=(batch_size, 784))
+    labels = tf.placeholder(tf.int32, shape=(batch_size, 10))
+    return images, labels
+
+
+def fill_feed_dict(images_placeholder, labels_placeholder, dataset):
+    batch_xs, batch_ys = dataset.next_batch(batch_size)
+    return {images_placeholder: batch_xs, labels_placeholder: batch_ys}
+
+
+def do_eval(ses, eval_func, images, labels, data):
+    correct_count = 0  # Counts the number of correct predictions.
+    steps_per_epoch = 10
+    num_examples = batch_size * steps_per_epoch
+    for step in range(steps_per_epoch):
+        fd = fill_feed_dict(images, labels, data)
+        # print("eval: ", eval_func)
+        correct = ses.run(eval_func, feed_dict=fd)
+        correct_count += correct
+        # print("should be top: ", songs_batch_size * ticks_batch * 128, "actually: ", cur_true)
+    precision = (1000 - float(10000 - correct_count) / 2) / num_examples
+    print('Num examples: ', num_examples, '  Num correct: ', correct_count, '  Precision: ', precision)
+
+
+def run_training():
+    """Train MNIST for a number of steps."""
+    # Get the sets of images and labels for training, validation, and
+    # test on MNIST.
+    train_data = input_data.read_data_sets("/tmp/tensorflow/mnist/input_data", one_hot=True).train
+    test_data = input_data.read_data_sets("/tmp/tensorflow/mnist/input_data", one_hot=True).validation
+    # validation_data = np.load('dev.npy')
+
+    # Tell TensorFlow that the model will be built into the default Graph.
+    with tf.Graph().as_default():
+        # Generate placeholders for the images and labels.
+        images_ph, labels_ph = placeholder_inputs()
+        print("before inference")
+        # Build a Graph that computes predictions from the inference model.
+        features, guesses, class_loss, decode_loss = model.inference(images_ph, labels_ph)
+        print("before train op")
+        class_train_op = model.training(class_loss, learning_rate)
+        # decode_train_op = model.training(decode_loss, learning_rate)
+
+        # Add the Op to compare the logits to the labels during evaluation.
+        eval_correct = model.evaluation(guesses, labels_ph)
+        print("at the beginning: ", eval_correct)
+        # Build the summary Tensor based on the TF collection of Summaries.
+        summary = tf.summary.merge_all()
+        print("before init")
+        # Add the variable initializer Op.
+        init = tf.global_variables_initializer()
+        saver = tf.train.Saver()
+        print("creating session")
+        sess = tf.Session()
+        if load:
+            print("load model")
+            saver.restore(sess, "output/best_model/model.ckpt-8499")
+            print("model loaded")
+        else:
+            print("creating new model")
+            sess.run(init)
+        # Instantiate a SummaryWriter to output summaries and the Graph.
+        summary_writer = tf.summary.FileWriter(log_dir, sess.graph)
+
+        # And then after everything is built:
+
+        # Run the Op to initialize the variables.
+        print("run session")
+
+        # Start the training loop.
+        for step in range(max_steps):
+            # print("inside training loop")
+            start_time = time.time()
+            loss_type = random.randint(0, 1)
+            # if loss_type:
+            _, class_loss_value = sess.run([class_train_op, class_loss],
+                                           feed_dict=fill_feed_dict(images_ph, labels_ph, train_data))
+            # else:
+            # _, decode_loss_value = sess.run([decode_train_op, decode_loss],
+            #                                 feed_dict=fill_feed_dict(images_ph, labels_ph, train_data))
+
+            duration = time.time() - start_time
+
+            # Write the summaries and print an overview fairly often.
+            if step % 100 == 0:
+                # Print status to stdout.
+                print('Step %d: class loss = %.2f,  (%.3f sec)' % (
+                    step, class_loss_value, duration))
+                # print('Step %d: class loss = %.2f, decode loss: %.2f (%.3f sec)' % (
+                #     step, class_loss_value, decode_loss_value, duration))
+
+                # Update the events file.
+                # summary_str = sess.run(summary, feed_dict=fill_feed_dict())
+                # summary_writer.add_summary(summary_str, step)
+                # summary_writer.flush()
+
+                # Save a checkpoint and evaluate the model periodically.
+            if (step + 1) % 500 == 0 or (step + 1) == max_steps:
+                checkpoint_file = os.path.join(log_dir, 'model.ckpt')
+                saver.save(sess, checkpoint_file, global_step=step)
+                # Evaluate against the training set.
+                print('Training Data Eval:')
+                do_eval(sess, eval_correct, images_ph, labels_ph, train_data)
+                # Evaluate against the validation set.
+                print('Validation Data Eval:')
+                do_eval(sess, eval_correct, images_ph, labels_ph, test_data)
+
+
+if tf.gfile.Exists(log_dir):
+    tf.gfile.DeleteRecursively(log_dir)
+tf.gfile.MakeDirs(log_dir)
+run_training()
