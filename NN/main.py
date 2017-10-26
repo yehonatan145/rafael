@@ -1,0 +1,142 @@
+"""Trains and Evaluates the MNIST network using a feed dictionary."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+# pylint: disable=missing-docstring
+import os
+import time
+import model
+import tensorflow as tf
+import numpy as np
+import random
+
+log_dir = 'log/'
+num_time_samples = 10
+num_windows = 20
+num_sample_features = 6
+num_labels = 25
+batch_size = 1000
+learning_rate = 0.1
+load = 0
+max_steps = 100000
+
+
+def placeholder_inputs():
+    images = tf.placeholder(tf.float32, shape=(batch_size, num_windows, num_time_samples, num_sample_features))
+    labels = tf.placeholder(tf.int32, shape=(batch_size, 1))
+    return images, labels
+
+
+def next_batch(missiles, labels):
+    # print(len(labels))
+    # print(np.shape(labels))
+    indexes = [i for i in range(len(labels))]
+    random.shuffle(indexes)
+    return missiles[indexes[0:batch_size]], np.reshape(labels[indexes[0:batch_size]], (batch_size, 1))
+
+
+def fill_feed_dict(missiles_ph, labels_ph, missiles_routes, labels):
+    batch_xs, batch_ys = next_batch(missiles_routes, labels)
+    return {missiles_ph: batch_xs, labels_ph: batch_ys}
+
+
+# classification eval
+def do_eval(ses, eval_func, missiles_ph, labels_ph, missiles_routes, labels):
+    correct_count = 0  # Counts the number of correct predictions.
+    steps_per_epoch = 2
+    num_examples = batch_size * steps_per_epoch
+    for step in range(steps_per_epoch):
+        fd = fill_feed_dict(missiles_ph, labels_ph, missiles_routes, labels)
+        correct = ses.run(eval_func, feed_dict=fd)
+        correct_count += correct
+        # print("should be top: ", songs_batch_size * ticks_batch * 128, "actually: ", cur_true)
+    precision = (num_examples - float(num_examples * num_labels - correct_count) / 2) / num_examples
+    print('Num examples: ', num_examples, '  Num correct: ', correct_count, '  Precision: ', precision)
+
+
+def run_training():
+    """Train MNIST for a number of steps."""
+    # Get the sets of images and labels for training, validation, and
+    # test on MNIST.
+    missiles_data = np.load("train_numpy.npy")
+    labels_data = np.load("label_numpy.npy")
+    # validation_data = np.load('dev.npy')
+
+    # Tell TensorFlow that the model will be built into the default Graph.
+    with tf.Graph().as_default():
+        # Generate placeholders for the images and labels.
+        images_ph, labels_ph = placeholder_inputs()
+        print("before inference")
+        # Build a Graph that computes predictions from the inference model.
+        features, guesses, class_loss, decode_loss = model.inference(images_ph, labels_ph)
+        print("before train op")
+        class_train_op = model.training(class_loss, learning_rate)
+        # decode_train_op = model.training(decode_loss, learning_rate)
+
+        # Add the Op to compare the logits to the labels during evaluation.
+        eval_correct = model.evaluation(guesses, labels_ph)
+        print("at the beginning: ", eval_correct)
+        # Build the summary Tensor based on the TF collection of Summaries.
+        summary = tf.summary.merge_all()
+        print("before init")
+        # Add the variable initializer Op.
+        init = tf.global_variables_initializer()
+        saver = tf.train.Saver()
+        print("creating session")
+        sess = tf.Session()
+        if load:
+            print("load model")
+            saver.restore(sess, "output/best_model/model.ckpt-8499")
+            print("model loaded")
+        else:
+            print("creating new model")
+            sess.run(init)
+        # Instantiate a SummaryWriter to output summaries and the Graph.
+        summary_writer = tf.summary.FileWriter(log_dir, sess.graph)
+        # And then after everything is built:
+        # Run the Op to initialize the variables.
+        print("run session")
+
+        # Start the training loop.
+        for step in range(max_steps):
+            # print("inside training loop")
+            start_time = time.time()
+            loss_type = random.randint(0, 1)
+            # if loss_type:
+            _, class_loss_value = sess.run([class_train_op, class_loss],
+                                           feed_dict=fill_feed_dict(images_ph, labels_ph, missiles_data, labels_data))
+            # else:
+            # _, decode_loss_value = sess.run([decode_train_op, decode_loss],
+            #                                 feed_dict=fill_feed_dict(images_ph, labels_ph, train_data))
+
+            duration = time.time() - start_time
+
+            # Write the summaries and print an overview fairly often.
+            if step % 100 == 0:
+                # Print status to stdout.
+                print('Step %d: class loss = %.2f,  (%.3f sec)' % (
+                    step, class_loss_value, duration))
+                # print('Step %d: class loss = %.2f, decode loss: %.2f (%.3f sec)' % (
+                #     step, class_loss_value, decode_loss_value, duration))
+
+                # Update the events file.
+                # summary_str = sess.run(summary, feed_dict=fill_feed_dict())
+                # summary_writer.add_summary(summary_str, step)
+                # summary_writer.flush()
+                # Save a checkpoint and evaluate the model periodically.
+            if (step + 1) % 500 == 0 or (step + 1) == max_steps:
+                checkpoint_file = os.path.join(log_dir, 'model.ckpt')
+                saver.save(sess, checkpoint_file, global_step=step)
+                # Evaluate against the training set.
+                print('Training Data Eval:')
+                do_eval(sess, eval_correct, images_ph, labels_ph, missiles_data, labels_data)
+                # Evaluate against the validation set.
+                # print('Validation Data Eval:')
+                # do_eval(sess, eval_correct, images_ph, labels_ph, test_data)
+
+
+if tf.gfile.Exists(log_dir):
+    tf.gfile.DeleteRecursively(log_dir)
+tf.gfile.MakeDirs(log_dir)
+run_training()
