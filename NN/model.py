@@ -7,7 +7,7 @@ log_dir = 'log/'
 num_time_samples = 30
 num_sample_features = 6
 num_labels = 25
-batch_size = 1000
+batch_size = 100
 learning_rate = 0.1
 max_steps = 100000
 
@@ -69,6 +69,7 @@ def inference(routes, labels):
             b = tf.Variable(np.zeros((1, conv2_one_layer_length)), dtype=tf.float32)
             decoded_image = tf.nn.relu(tf.matmul(x, W) + b)
         with tf.name_scope('decoder_loss'):
+
             pass
             # loss = tf.losses.mean_squared_error(tf.reshape(images[i], (1, 784)), tf.reshape(decoded_image, (1, 784)))
             # decode_loss += loss
@@ -94,10 +95,11 @@ def evaluation(logits, labels):
     # the examples where the label is in the top k (here k=1)
     # of all logits for that example.
     # correct =  tf.gather(labels, tf.nn.top_k(logits, 1))
-    guessed_labels = tf.cast(tf.round(tf.nn.softmax(logits)), tf.int32)
-    # print("check shapes: \n", guessed_digits)
-    # print(labels)
-    return tf.reduce_sum(
-        tf.cast(tf.equal(tf.cast(guessed_labels, tf.int32),
-                         tf.reshape(tf.cast(tf.one_hot(labels, num_labels), tf.int32), (batch_size, 1, num_labels))),
-                tf.int32))
+
+    guessed_labels = tf.cast(tf.argmax(tf.nn.softmax(logits), 2), tf.int32)
+    # one_hot_labels = tf.reshape(tf.cast(tf.one_hot(labels, num_labels), tf.int32), (batch_size, 1, num_labels))
+    print("check shapes: \n", guessed_labels)
+    print(labels)
+    return tf.reduce_sum(tf.cast(tf.equal(guessed_labels, labels), tf.int32))
+    # return tf.reduce_sum(
+    #     tf.cast(tf.logical_and(tf.cast(guessed_labels, tf.bool), tf.cast(one_hot_labels, tf.bool)), tf.int32))
