@@ -16,8 +16,8 @@ num_time_samples = 10
 num_windows = 20
 num_sample_features = 6
 num_labels = 25
-batch_size = 1000
-learning_rate = 0.1
+batch_size = 100
+learning_rate = 0.01
 load = 0
 max_steps = 100000
 
@@ -51,7 +51,10 @@ def do_eval(ses, eval_func, missiles_ph, labels_ph, missiles_routes, labels):
         correct = ses.run(eval_func, feed_dict=fd)
         correct_count += correct
         # print("should be top: ", songs_batch_size * ticks_batch * 128, "actually: ", cur_true)
-    precision = (num_examples - float(num_examples * num_labels - correct_count) / 2) / num_examples
+    # precision = (num_examples - float(num_examples * num_labels - correct_count) / 2) / num_examples
+    # print('Num examples: ', num_examples, '  Num correct: ',
+    #       (num_examples - float(num_examples * num_labels - correct_count) / 2), '  Precision: ', precision)
+    precision = correct_count / num_examples
     print('Num examples: ', num_examples, '  Num correct: ', correct_count, '  Precision: ', precision)
 
 
@@ -76,7 +79,7 @@ def run_training():
 
         # Add the Op to compare the logits to the labels during evaluation.
         eval_correct = model.evaluation(guesses, labels_ph)
-        print("at the beginning: ", eval_correct)
+        # print("at the beginning: ", eval_correct)
         # Build the summary Tensor based on the TF collection of Summaries.
         summary = tf.summary.merge_all()
         print("before init")
