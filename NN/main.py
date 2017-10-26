@@ -17,7 +17,7 @@ num_windows = 20
 num_sample_features = 6
 num_labels = 25
 batch_size = 100
-learning_rate = 0.01
+learning_rate = 0.00001
 load = 0
 max_steps = 100000
 
@@ -90,7 +90,7 @@ def run_training():
         sess = tf.Session()
         if load:
             print("load model")
-            saver.restore(sess, "output/best_model/model.ckpt-8499")
+            saver.restore(sess, "models/model.ckpt-17999")
             print("model loaded")
         else:
             print("creating new model")
